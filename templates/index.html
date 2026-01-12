@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Automatizador de vídeos para Instagram Reels usando Veo 3">
+    <meta name="theme-color" content="#D4AF37">
+
+    <!-- PWA Meta Tags -->
+    <link rel="manifest" href="/static/manifest.json">
+    <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+
+    <title>VEO Automator - Gerador de Vídeos</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <span class="gold-icon">🎬</span>
+                <h1>VEO AUTOMATOR</h1>
+            </div>
+            <p class="subtitle">Gerador Automático de Vídeos para Reels</p>
+        </header>
+
+        <!-- Main Form -->
+        <main class="main-content">
+            <form id="automationForm">
+
+                <!-- Perfil FLOW -->
+                <div class="form-group">
+                    <label for="profile">
+                        <span class="icon">👤</span>
+                        Perfil do Chrome
+                    </label>
+                    <select id="profile" name="profile" required>
+                        <option value="">Carregando perfis...</option>
+                    </select>
+                </div>
+
+                <!-- Imagem de Referência -->
+                <div class="form-group">
+                    <label for="imageInput">
+                        <span class="icon">🖼️</span>
+                        Imagem de Referência
+                        <span class="optional">(opcional)</span>
+                    </label>
+                    <div class="file-input-wrapper">
+                        <input type="text" id="imagePathDisplay" readonly placeholder="Nenhuma imagem selecionada">
+                        <input type="file" id="imageInput" accept="image/*" style="display: none;" onchange="handleImageSelect(this)">
+                        <button type="button" class="btn-secondary" onclick="document.getElementById('imageInput').click()">
+                            Selecionar
+                        </button>
+                        <button type="button" class="btn-remove" id="removeImageBtn" style="display: none;" onclick="removeImage()">
+                            ✕
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Pasta de Destino -->
+                <div class="form-group">
+                    <label for="outputFolderPath">
+                        <span class="icon">📁</span>
+                        Pasta de Destino
+                    </label>
+                    <input
+                        type="text"
+                        id="outputFolderPath"
+                        required
+                        placeholder="Cole o caminho da pasta (ex: C:\Users\cesar\Videos\output)"
+                        title="Cole o caminho completo onde os vídeos serão salvos"
+                    >
+                    <small style="color: var(--text-muted); display: block; margin-top: 5px;">
+                        💡 Exemplo: C:\Users\cesar\Videos\Reels-2026
+                    </small>
+                </div>
+
+                <!-- Cenas -->
+                <div class="form-group">
+                    <label>
+                        <span class="icon">📝</span>
+                        Cenas do Vídeo
+                    </label>
+                    <div id="scenesContainer">
+                        <!-- Cenas serão adicionadas dinamicamente -->
+                        <div class="scene-item">
+                            <div class="scene-header">
+                                <span class="scene-number">Cena 1</span>
+                                <button type="button" class="btn-remove" onclick="removeScene(this)" style="display: none;">
+                                    ✕
+                                </button>
+                            </div>
+                            <textarea
+                                class="scene-textarea"
+                                placeholder="Cole aqui o prompt da cena..."
+                                rows="6"
+                                required
+                            ></textarea>
+                        </div>
+                    </div>
+                    <button type="button" class="btn-add-scene" onclick="addScene()">
+                        <span class="icon">➕</span>
+                        Adicionar Nova Cena
+                    </button>
+                </div>
+
+                <!-- Botão de Iniciar -->
+                <div class="form-actions">
+                    <button type="submit" class="btn-primary" id="startBtn">
+                        <span class="icon">🚀</span>
+                        INICIAR AUTOMAÇÃO
+                    </button>
+                </div>
+
+            </form>
+
+            <!-- Área de Logs -->
+            <div class="logs-container" id="logsContainer" style="display: none;">
+                <div class="logs-header">
+                    <h3>
+                        <span class="icon">📊</span>
+                        Logs de Execução
+                    </h3>
+                    <button type="button" class="btn-secondary btn-small" onclick="clearLogs()">
+                        Limpar
+                    </button>
+                </div>
+                <div class="logs-content" id="logsContent">
+                    <!-- Logs serão adicionados aqui -->
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Desenvolvido com 🏆 para otimização de produção de conteúdo</p>
+        </footer>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>
