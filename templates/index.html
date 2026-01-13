@@ -28,15 +28,40 @@
         <main class="main-content">
             <form id="automationForm">
 
-                <!-- Perfil FLOW -->
+                <!-- Email Google -->
                 <div class="form-group">
-                    <label for="profile">
-                        <span class="icon">👤</span>
-                        Perfil do Chrome
+                    <label for="emailInput">
+                        <span class="icon">📧</span>
+                        Email do Google
                     </label>
-                    <select id="profile" name="profile" required>
-                        <option value="">Carregando perfis...</option>
-                    </select>
+                    <input
+                        type="email"
+                        id="emailInput"
+                        required
+                        placeholder="exemplo@gmail.com"
+                        autocomplete="email"
+                    >
+                    <small style="color: var(--text-muted); display: block; margin-top: 5px;">
+                        💡 Email da conta Google Labs
+                    </small>
+                </div>
+
+                <!-- Senha Google -->
+                <div class="form-group">
+                    <label for="passwordInput">
+                        <span class="icon">🔒</span>
+                        Senha do Google
+                    </label>
+                    <input
+                        type="password"
+                        id="passwordInput"
+                        required
+                        placeholder="Digite sua senha"
+                        autocomplete="current-password"
+                    >
+                    <small style="color: var(--text-muted); display: block; margin-top: 5px;">
+                        💡 Credenciais ficam apenas na sua máquina
+                    </small>
                 </div>
 
                 <!-- Imagem de Referência -->

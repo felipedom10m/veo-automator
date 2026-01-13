@@ -10,51 +10,20 @@ let sceneCount = 1;
 // ============================================
 
 document.addEventListener('DOMContentLoaded', function() {
-    loadProfiles();
     setupFormSubmit();
 
     // Registrar Service Worker para PWA
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('/static/service-worker.js')
-            .then(reg => console.log('Service Worker registrado'))
+            .then(() => console.log('Service Worker registrado'))
             .catch(err => console.log('Erro ao registrar Service Worker:', err));
     }
 });
 
 // ============================================
-// CARREGAR PERFIS FLOW
+// CARREGAR PERFIS FLOW (NÃO USADO MAIS - LOGIN AUTOMÁTICO)
 // ============================================
-
-async function loadProfiles() {
-    const select = document.getElementById('profile');
-
-    try {
-        const response = await fetch('/api/get-profiles');
-        const data = await response.json();
-
-        if (data.success) {
-            select.innerHTML = '<option value="">Selecione um perfil...</option>';
-
-            data.profiles.forEach(profile => {
-                const option = document.createElement('option');
-                option.value = profile;
-                option.textContent = profile;
-                select.appendChild(option);
-            });
-
-            if (data.profiles.length === 0) {
-                select.innerHTML = '<option value="">Nenhum perfil FLOW encontrado</option>';
-                addLog('Nenhum perfil FLOW_ encontrado. Renomeie seus perfis do Chrome.', 'warning');
-            }
-        } else {
-            select.innerHTML = '<option value="">Erro ao carregar perfis</option>';
-            addLog('Erro ao carregar perfis: ' + data.error, 'error');
-        }
-    } catch (error) {
-        select.innerHTML = '<option value="">Erro ao conectar com servidor</option>';
-        addLog('Erro ao conectar: ' + error.message, 'error');
-    }
-}
+// Função removida - agora usa email/senha para login automático
 
 // ============================================
 // GERENCIAR CENAS
@@ -150,7 +119,8 @@ function setupFormSubmit() {
         btn.classList.add('loading');
 
         // Coletar dados do formulário
-        const profile = document.getElementById('profile').value;
+        const email = document.getElementById('emailInput').value.trim();
+        const password = document.getElementById('passwordInput').value.trim();
         const outputFolder = document.getElementById('outputFolderPath').value.trim();
 
         // Coletar prompts das cenas
@@ -158,8 +128,15 @@ function setupFormSubmit() {
         const scenes = Array.from(sceneTextareas).map(textarea => textarea.value.trim());
 
         // Validação
-        if (!profile) {
-            alert('Selecione um perfil FLOW');
+        if (!email) {
+            alert('Digite o email do Google');
+            btn.disabled = false;
+            btn.classList.remove('loading');
+            return;
+        }
+
+        if (!password) {
+            alert('Digite a senha do Google');
             btn.disabled = false;
             btn.classList.remove('loading');
             return;
@@ -184,7 +161,7 @@ function setupFormSubmit() {
         clearLogs();
 
         addLog('Iniciando automação...', 'info');
-        addLog(`Perfil: ${profile}`, 'info');
+        addLog(`Email: ${email}`, 'info');
         addLog(`Total de cenas: ${scenes.length}`, 'info');
         if (selectedImageFile) {
             addLog(`Imagem de referência: ${selectedImageFile.name}`, 'info');
@@ -194,7 +171,8 @@ function setupFormSubmit() {
         // Enviar para o backend usando FormData (para suportar upload de arquivo)
         try {
             const formData = new FormData();
-            formData.append('profile', profile);
+            formData.append('email', email);
+            formData.append('password', password);
             formData.append('output_folder', outputFolder);
             formData.append('scenes', JSON.stringify(scenes));
 

@@ -8,7 +8,8 @@ Aplicação web PWA para automatizar criação de vídeos no Veo 3
 from flask import Flask, render_template, request, jsonify
 import os
 import json
-from automator import detect_flow_profiles
+import threading
+from automator import detect_flow_profiles, VeoAutomator
 
 app = Flask(__name__)
 
@@ -54,7 +55,8 @@ def start_automation():
     """
     try:
         # Receber dados do FormData
-        profile = request.form.get('profile')
+        email = request.form.get('email')
+        password = request.form.get('password')
         output_folder = request.form.get('output_folder')
         scenes_json = request.form.get('scenes')
         scenes = json.loads(scenes_json) if scenes_json else []
@@ -71,10 +73,16 @@ def start_automation():
             image_file.save(image_path)
 
         # Validações
-        if not profile:
+        if not email:
             return jsonify({
                 'success': False,
-                'error': 'Selecione um perfil FLOW'
+                'error': 'Digite o email do Google'
+            }), 400
+
+        if not password:
+            return jsonify({
+                'success': False,
+                'error': 'Digite a senha do Google'
             }), 400
 
         if not scenes or len(scenes) == 0:
@@ -89,18 +97,40 @@ def start_automation():
                 'error': 'Selecione a pasta de destino'
             }), 400
 
-        # TODO: Iniciar automação com Selenium
-        print(f"[LOG] Perfil selecionado: {profile}")
-        print(f"[LOG] Total de cenas: {len(scenes)}")
-        print(f"[LOG] Imagem de referência: {image_path if image_path else 'Nenhuma'}")
-        print(f"[LOG] Pasta destino: {output_folder}")
+        # Iniciar automação com Selenium
+        print(f"\n{'=' * 60}")
+        print(f"🚀 INICIANDO AUTOMAÇÃO")
+        print(f"{'=' * 60}")
+        print(f"📧 Email: {email}")
+        print(f"📁 Pasta destino: {output_folder}")
+        print(f"🖼️  Imagem: {image_path if image_path else 'Nenhuma'}")
+        print(f"🎬 Total de cenas: {len(scenes)}")
+        print(f"{'=' * 60}\n")
 
         for idx, scene in enumerate(scenes, 1):
-            print(f"[LOG] Cena {idx}: {scene[:50]}...")
+            print(f"  Cena {idx}: {scene[:60]}...")
+
+        # Criar instância do automator
+        automator = VeoAutomator(
+            email=email,
+            password=password,
+            output_folder=output_folder,
+            image_path=image_path
+        )
+
+        # Executar em thread separada para não bloquear Flask
+        def run_automation():
+            try:
+                automator.run(scenes)
+            except Exception as e:
+                print(f"\n[ERRO] Automação falhou: {e}")
+
+        thread = threading.Thread(target=run_automation)
+        thread.start()
 
         return jsonify({
             'success': True,
-            'message': 'Automação iniciada com sucesso!'
+            'message': f'Automação iniciada! Processando {len(scenes)} cena(s)...'
         })
 
     except Exception as e:
