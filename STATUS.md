@@ -185,3 +185,81 @@
 **Importante:**
 - Projeto será enviado para GitHub para backup na nuvem
 - **LEIA:** [INSTRUCOES-WINDOWS.md](INSTRUCOES-WINDOWS.md) para instruções detalhadas
+
+
+
+Status Atual:
+🔍 MÉTODO: Investigação com JavaScript + XPath
+PASSO 1: Injetar JavaScript para Listar TODOS os Elementos
+Uso JavaScript no Selenium para varrer TODOS os elementos da página e coletar suas propriedades:
+
+
+let elementos = Array.from(document.querySelectorAll('*'));
+let resultados = [];
+
+elementos.forEach((el, idx) => {
+    if (el.offsetParent !== null) {  // Apenas elementos VISÍVEIS
+        resultados.push({
+            indice: idx,
+            tag: el.tagName,
+            id: el.id || 'sem-id',
+            classes: el.className || 'sem-classe',
+            texto: el.textContent.trim(),
+            role: el.getAttribute('role'),
+            type: el.getAttribute('type'),
+            disabled: el.disabled,
+            // ... outras propriedades
+        });
+    }
+});
+
+return resultados;
+PASSO 2: Filtrar por Característica Única
+Analiso os logs para encontrar o padrão que diferencia o elemento:
+
+Exemplo 1: "Frames para vídeo"
+
+❌ Elemento errado: role="presentation" (container pai)
+✅ Elemento correto: role="option" + texto "Frames para vídeo"
+Exemplo 2: Botão "+"
+
+❌ Elementos errados: texto "add_photo_alternate"
+✅ Elemento correto: texto exatamente "add" + type="submit" + classe sc-d02e9a37-1
+Exemplo 3: Botão "Criar" (seta)
+
+❌ Elementos errados: outros botões com arrow
+✅ Elemento correto: texto "arrow_forwardCriar" + classe sc-408537d4-2 + disabled=False
+PASSO 3: Criar XPath ou Seletor Específico
+Uso a característica única para criar o seletor:
+
+
+# Exemplo: Frames para vídeo
+"//div[@role='option' and contains(@class, 'sc-fbe1c021-2') and contains(., 'Frames para vídeo')]"
+
+# Exemplo: Botão +
+"//button[contains(., 'add') and @type='submit' and contains(@class, 'sc-d02e9a37-1')]"
+
+# Exemplo: Botão Criar
+"//button[contains(., 'arrow_forward') and contains(., 'Criar') and not(@disabled)]"
+PASSO 4: Validar com Múltiplas Estratégias (Fallback)
+Sempre crio 2-3 estratégias de busca para garantir que funcione:
+
+Estratégia 1: Classe específica + atributo
+Estratégia 2: Listar todos e filtrar por texto
+Estratégia 3: JavaScript puro
+📝 Resumo do que Funciona Agora
+✅ Selecionar "Frames para vídeo"
+
+✅ Clicar no botão + para upload
+
+✅ Fazer upload da imagem
+
+✅ Clicar em "Cortar e salvar"
+
+✅ Colar o prompt no campo de texto
+
+✅ Clicar no botão "Criar" (seta branca)
+
+✅ Vídeo inicia geração
+
+

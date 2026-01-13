@@ -311,6 +311,467 @@ class VeoAutomator:
         except Exception as e:
             print(f"[ERRO] Erro ao baixar vídeos: {e}")
 
+    def configure_and_generate(self, prompt):
+        """
+        Configura o projeto e inicia geração do vídeo
+
+        Args:
+            prompt (str): Texto do prompt da cena
+        """
+        try:
+            has_image = bool(self.image_path and os.path.exists(self.image_path))
+
+            # AGUARDAR PÁGINA CARREGAR COMPLETAMENTE
+            print("[LOG] Aguardando página de criação carregar completamente...")
+            time.sleep(8)  # Tempo para página carregar
+
+            # PASSO 1: Decidir entre "Texto para vídeo" ou "Frames para vídeo"
+            if has_image:
+                print("[LOG] Imagem detectada. Mudando para 'Frames para vídeo'...")
+
+                # Clicar no dropdown "Texto para vídeo"
+                try:
+                    print("[LOG] Procurando dropdown 'Texto para vídeo'...")
+                    texto_video_dropdown = self.wait.until(
+                        EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'Texto para vídeo')] | //div[contains(., 'Texto para vídeo') and @role='button']"))
+                    )
+                    texto_video_dropdown.click()
+                    print("[LOG] ✅ Clicou no dropdown 'Texto para vídeo'")
+
+                    # AGUARDAR modal abrir completamente
+                    print("[LOG] Aguardando modal carregar (3 segundos)...")
+                    time.sleep(3)
+
+                    # ===== DEBUG: SALVAR HTML COMPLETO PARA ANÁLISE =====
+                    print("[LOG] 🔍 MODO DEBUG: Salvando HTML da página...")
+                    try:
+                        html_completo = self.driver.page_source
+                        debug_html_path = os.path.join(self.output_folder, "debug_modal_html.html")
+                        with open(debug_html_path, 'w', encoding='utf-8') as f:
+                            f.write(html_completo)
+                        print(f"[LOG] 📄 HTML salvo em: {debug_html_path}")
+                    except Exception as e:
+                        print(f"[LOG] Erro ao salvar HTML: {e}")
+
+                    # ===== DEBUG: INSPECIONAR TODOS ELEMENTOS COM "FRAMES" =====
+                    print("[LOG] 🔍 Analisando TODOS elementos com 'Frames'...")
+                    js_investigacao = """
+                    // Procurar TODOS elementos que contenham "Frames"
+                    let todosElementos = Array.from(document.querySelectorAll('*'));
+                    let resultados = [];
+
+                    todosElementos.forEach((el, idx) => {
+                        let texto = el.textContent || '';
+                        if (texto.includes('Frames') && el.offsetParent !== null) {
+                            resultados.push({
+                                indice: idx,
+                                tag: el.tagName,
+                                id: el.id || 'sem-id',
+                                classes: el.className || 'sem-classe',
+                                texto: texto.substring(0, 100),
+                                role: el.getAttribute('role') || 'sem-role',
+                                type: el.getAttribute('type') || 'sem-type',
+                                dataType: el.getAttribute('data-type') || 'sem-data-type',
+                                clicavel: el.onclick !== null || el.getAttribute('onclick') !== null,
+                                temCursor: window.getComputedStyle(el).cursor === 'pointer'
+                            });
+                        }
+                    });
+
+                    return resultados;
+                    """
+
+                    elementos_frames = self.driver.execute_script(js_investigacao)
+                    print(f"[LOG] 🔍 Encontrados {len(elementos_frames)} elementos com 'Frames':")
+                    print("[LOG] " + "="*80)
+                    for elem_info in elementos_frames:
+                        print(f"[LOG] Elemento #{elem_info['indice']}:")
+                        print(f"[LOG]   Tag: <{elem_info['tag']}>")
+                        print(f"[LOG]   ID: {elem_info['id']}")
+                        print(f"[LOG]   Classes: {elem_info['classes']}")
+                        print(f"[LOG]   Role: {elem_info['role']}")
+                        print(f"[LOG]   Type: {elem_info['type']}")
+                        print(f"[LOG]   Data-Type: {elem_info['dataType']}")
+                        print(f"[LOG]   Clicável: {elem_info['clicavel']}")
+                        print(f"[LOG]   Cursor pointer: {elem_info['temCursor']}")
+                        print(f"[LOG]   Texto: {elem_info['texto'][:80]}...")
+                        print("[LOG]   " + "-"*78)
+                    print("[LOG] " + "="*80)
+
+                    # Selecionar "Frames para vídeo" - ESTRATÉGIA CORRETA
+                    print("[LOG] Procurando opção 'Frames para vídeo' com role='option'...")
+
+                    # ESTRATÉGIA CORRETA: Procurar por role="option" que contenha "Frames"
+                    # Baseado na análise, o elemento correto tem:
+                    # - role="option"
+                    # - Clicável: True
+                    # - Cursor pointer: True
+                    # - Texto: "photo_sparkFrames para vídeo"
+
+                    frames_option = None
+                    try:
+                        # Tentar pela classe específica encontrada
+                        print("[LOG] Tentativa 1: Por classe 'sc-fbe1c021-2 jynkRM'...")
+                        frames_option = self.driver.find_element(By.XPATH,
+                            "//div[@role='option' and contains(@class, 'sc-fbe1c021-2') and contains(., 'Frames para vídeo')]")
+                        print("[LOG] ✅ Encontrou pela classe específica!")
+                    except:
+                        print("[LOG] Não encontrou pela classe específica. Tentando role='option'...")
+                        try:
+                            # Buscar todos elementos com role="option"
+                            opcoes = self.driver.find_elements(By.XPATH, "//div[@role='option']")
+                            print(f"[LOG] Encontrou {len(opcoes)} elementos com role='option'")
+
+                            for idx, opcao in enumerate(opcoes, 1):
+                                texto = opcao.text.strip()
+                                print(f"[LOG]   Opção {idx}: '{texto}'")
+
+                                # Verificar se é a opção de Frames
+                                if 'frames' in texto.lower() and 'vídeo' in texto.lower():
+                                    frames_option = opcao
+                                    print(f"[LOG] ✅ ENCONTROU opção 'Frames para vídeo'!")
+                                    break
+                        except Exception as e:
+                            print(f"[LOG] Erro ao buscar por role='option': {e}")
+
+                    # ESTRATÉGIA 2: JavaScript como fallback
+                    if not frames_option:
+                        print("[LOG] ⚠️ Tentando JavaScript para encontrar role='option' com 'Frames'...")
+                        try:
+                            js_code = """
+                            // Buscar div com role="option" que contenha "Frames"
+                            let opcoes = Array.from(document.querySelectorAll('div[role="option"]'));
+                            let frames_elem = opcoes.find(el =>
+                                el.textContent.includes('Frames') &&
+                                el.textContent.includes('vídeo')
+                            );
+                            return frames_elem;
+                            """
+                            frames_option = self.driver.execute_script(js_code)
+                            if frames_option:
+                                print("[LOG] ✅ JavaScript encontrou elemento!")
+                            else:
+                                print("[LOG] ❌ JavaScript não encontrou elemento")
+                        except Exception as e:
+                            print(f"[LOG] Erro no JavaScript: {e}")
+
+                    # CLICAR no elemento encontrado
+                    if not frames_option:
+                        # Salvar screenshot para debug
+                        screenshot_path = os.path.join(self.output_folder, "debug_modal_frames.png")
+                        self.driver.save_screenshot(screenshot_path)
+                        print(f"[LOG] 📸 Screenshot salvo em: {screenshot_path}")
+                        raise Exception("❌ NÃO encontrou opção 'Frames para vídeo' depois de todas tentativas")
+
+                    # Tentar clicar normalmente primeiro
+                    try:
+                        print("[LOG] Tentando clicar normalmente...")
+                        frames_option.click()
+                        print("[LOG] ✅ Clicou com .click() normal!")
+                    except Exception as e:
+                        print(f"[LOG] .click() falhou: {e}. Tentando JavaScript...")
+                        # Usar JavaScript para clicar
+                        self.driver.execute_script("arguments[0].click();", frames_option)
+                        print("[LOG] ✅ Clicou com JavaScript!")
+
+                    print("[LOG] ✅ Selecionou 'Frames para vídeo'")
+                    time.sleep(3)
+
+                except Exception as e:
+                    print(f"[ERRO] Erro ao mudar para 'Frames para vídeo': {e}")
+                    raise
+
+                # PASSO 2: Fazer upload da imagem
+                print(f"[LOG] Fazendo upload da imagem: {self.image_path}")
+                try:
+                    # Aguardar a interface de "Frames para vídeo" carregar
+                    print("[LOG] Aguardando interface 'Frames para vídeo' carregar...")
+                    time.sleep(3)
+
+                    # ===== DEBUG: INVESTIGAR BOTÃO DE UPLOAD (+) =====
+                    print("[LOG] 🔍 Procurando botão '+' para fazer upload...")
+
+                    # Investigar todos os botões visíveis
+                    js_investigar_botoes = """
+                    let botoes = Array.from(document.querySelectorAll('button'));
+                    let resultados = [];
+
+                    botoes.forEach((btn, idx) => {
+                        if (btn.offsetParent !== null) {  // Apenas visíveis
+                            resultados.push({
+                                indice: idx,
+                                id: btn.id || 'sem-id',
+                                classes: btn.className || 'sem-classe',
+                                ariaLabel: btn.getAttribute('aria-label') || 'sem-aria-label',
+                                texto: btn.textContent.trim() || 'sem-texto',
+                                type: btn.type || 'sem-type',
+                                temIcone: btn.querySelector('svg') !== null
+                            });
+                        }
+                    });
+
+                    return resultados;
+                    """
+
+                    todos_botoes = self.driver.execute_script(js_investigar_botoes)
+                    print(f"[LOG] 🔍 Encontrados {len(todos_botoes)} botões visíveis:")
+                    print("[LOG] " + "="*80)
+
+                    for btn_info in todos_botoes[:20]:  # Mostrar primeiros 20
+                        print(f"[LOG] Botão #{btn_info['indice']}:")
+                        print(f"[LOG]   ID: {btn_info['id']}")
+                        print(f"[LOG]   Classes: {btn_info['classes'][:80]}...")
+                        print(f"[LOG]   Aria-Label: {btn_info['ariaLabel']}")
+                        print(f"[LOG]   Texto: {btn_info['texto'][:50]}")
+                        print(f"[LOG]   Type: {btn_info['type']}")
+                        print(f"[LOG]   Tem ícone SVG: {btn_info['temIcone']}")
+                        print("[LOG]   " + "-"*78)
+                    print("[LOG] " + "="*80)
+
+                    # Procurar e clicar no botão "add" (+)
+                    print("[LOG] Procurando botão 'add' (+) para adicionar frame...")
+
+                    # ESTRATÉGIA: Procurar botão com texto "add" (ícone +)
+                    # Baseado na análise: Botões #15 e #17 têm texto "add"
+                    upload_btn = None
+
+                    try:
+                        # Procurar todos botões que contenham "add" no texto
+                        print("[LOG] Procurando botões com texto 'add'...")
+                        botoes_add = self.driver.find_elements(By.XPATH, "//button[contains(., 'add')]")
+                        print(f"[LOG] Encontrou {len(botoes_add)} botão(ões) com 'add'")
+
+                        # Filtrar apenas os visíveis e com type="submit"
+                        for idx, btn in enumerate(botoes_add, 1):
+                            try:
+                                texto = btn.text.strip()
+                                tipo = btn.get_attribute('type')
+                                visivel = btn.is_displayed()
+                                classes = btn.get_attribute('class')
+
+                                print(f"[LOG]   Botão {idx}: texto='{texto}' | type='{tipo}' | visível={visivel}")
+
+                                # Queremos o botão que tem APENAS "add" (não "add_photo_alternate")
+                                # E que seja visível e type="submit"
+                                if texto == 'add' and tipo == 'submit' and visivel:
+                                    # Verificar se tem a classe específica do frame
+                                    if 'sc-d02e9a37-1' in classes:
+                                        upload_btn = btn
+                                        print(f"[LOG] ✅ ENCONTROU botão 'add' correto! (#{idx})")
+                                        break
+                            except Exception as e:
+                                print(f"[LOG] Erro ao verificar botão {idx}: {e}")
+                                continue
+
+                        # Se não encontrou pela classe, pegar o primeiro botão "add"
+                        if not upload_btn and botoes_add:
+                            for btn in botoes_add:
+                                if btn.text.strip() == 'add' and btn.is_displayed():
+                                    upload_btn = btn
+                                    print("[LOG] ✅ Usando primeiro botão 'add' visível")
+                                    break
+
+                    except Exception as e:
+                        print(f"[LOG] Erro ao procurar botão 'add': {e}")
+
+                    # Se encontrou o botão, clicar nele
+                    if upload_btn:
+                        try:
+                            print("[LOG] Clicando no botão '+' (add)...")
+                            upload_btn.click()
+                            print("[LOG] ✅ Clicou no botão '+'!")
+                            time.sleep(2)
+                        except Exception as e:
+                            print(f"[LOG] Erro ao clicar: {e}. Tentando JavaScript...")
+                            self.driver.execute_script("arguments[0].click();", upload_btn)
+                            print("[LOG] ✅ Clicou com JavaScript!")
+                            time.sleep(2)
+                    else:
+                        print("[LOG] ⚠️ Não encontrou botão 'add'. Tentando input direto...")
+
+                    # Agora procurar o input[@type='file']
+                    print("[LOG] Procurando input[@type='file']...")
+                    upload_input = self.wait.until(
+                        EC.presence_of_element_located((By.XPATH, "//input[@type='file']"))
+                    )
+
+                    # Enviar caminho da imagem
+                    upload_input.send_keys(self.image_path)
+                    print("[LOG] Upload iniciado. Aguardando imagem carregar...")
+
+                    # AGUARDAR a imagem aparecer no preview (boa prática!)
+                    print("[LOG] Aguardando preview da imagem aparecer...")
+                    image_preview = self.wait.until(
+                        EC.presence_of_element_located((By.XPATH, "//img[contains(@src, 'blob:') or contains(@src, 'data:')]"))
+                    )
+                    print("[LOG] ✅ Imagem carregada e visível no preview!")
+                    time.sleep(2)
+
+                    # PASSO 3: Clicar em "Cortar e salvar"
+                    print("[LOG] Procurando botão 'Cortar e salvar'...")
+                    cortar_btn = self.wait.until(
+                        EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'Cortar e salvar') or contains(., 'Cortar')]"))
+                    )
+                    cortar_btn.click()
+                    print("[LOG] ✅ Clicou em 'Cortar e salvar'")
+                    time.sleep(3)
+
+                except Exception as e:
+                    print(f"[ERRO] Erro ao fazer upload da imagem: {e}")
+                    raise
+            else:
+                print("[LOG] Sem imagem. Mantendo 'Texto para vídeo'")
+
+            # PASSO 4: Clicar no campo de texto e colar o prompt
+            print(f"[LOG] Colando prompt: {prompt[:80]}...")
+            try:
+                print("[LOG] Procurando campo de texto...")
+                prompt_field = self.wait.until(
+                    EC.element_to_be_clickable((By.XPATH, "//textarea[contains(@placeholder, 'Crie um vídeo') or contains(@placeholder, 'vídeo')]"))
+                )
+                prompt_field.click()
+                time.sleep(1)
+                prompt_field.clear()
+                prompt_field.send_keys(prompt)
+                print("[LOG] ✅ Prompt colado!")
+                time.sleep(2)
+
+            except Exception as e:
+                print(f"[ERRO] Erro ao colar prompt: {e}")
+                raise
+
+            # PASSO 5: Clicar na seta branca para gerar
+            print("[LOG] Procurando seta branca para iniciar geração...")
+            try:
+                # Aguardar um pouco antes de procurar a seta (garantir que prompt foi colado)
+                print("[LOG] Aguardando 3 segundos para garantir que o prompt foi processado...")
+                time.sleep(3)
+
+                # ===== DEBUG: INVESTIGAR BOTÕES APÓS COLAR PROMPT =====
+                print("[LOG] 🔍 Investigando botões após colar o prompt...")
+                js_botoes_geracao = """
+                let botoes = Array.from(document.querySelectorAll('button'));
+                let resultados = [];
+
+                botoes.forEach((btn, idx) => {
+                    if (btn.offsetParent !== null) {  // Apenas visíveis
+                        let computedStyle = window.getComputedStyle(btn);
+                        resultados.push({
+                            indice: idx,
+                            classes: btn.className || 'sem-classe',
+                            ariaLabel: btn.getAttribute('aria-label') || 'sem-aria-label',
+                            texto: btn.textContent.trim() || 'sem-texto',
+                            type: btn.type || 'sem-type',
+                            disabled: btn.disabled,
+                            backgroundColor: computedStyle.backgroundColor,
+                            color: computedStyle.color,
+                            temIcone: btn.querySelector('svg') !== null,
+                            temArrow: btn.textContent.includes('arrow')
+                        });
+                    }
+                });
+
+                return resultados;
+                """
+
+                botoes_atuais = self.driver.execute_script(js_botoes_geracao)
+                print(f"[LOG] 🔍 Encontrados {len(botoes_atuais)} botões visíveis agora:")
+                print("[LOG] " + "="*80)
+
+                for btn_info in botoes_atuais[:25]:  # Mostrar primeiros 25
+                    print(f"[LOG] Botão #{btn_info['indice']}:")
+                    print(f"[LOG]   Classes: {btn_info['classes'][:80]}...")
+                    print(f"[LOG]   Aria-Label: {btn_info['ariaLabel']}")
+                    print(f"[LOG]   Texto: {btn_info['texto'][:50]}")
+                    print(f"[LOG]   Type: {btn_info['type']}")
+                    print(f"[LOG]   Disabled: {btn_info['disabled']}")
+                    print(f"[LOG]   Background: {btn_info['backgroundColor']}")
+                    print(f"[LOG]   Color: {btn_info['color']}")
+                    print(f"[LOG]   Tem SVG: {btn_info['temIcone']}")
+                    print(f"[LOG]   Tem 'arrow': {btn_info['temArrow']}")
+                    print("[LOG]   " + "-"*78)
+                print("[LOG] " + "="*80)
+
+                # Procurar botão de gerar
+                print("[LOG] Procurando botão com 'arrow_forward' ou 'Criar'...")
+                generate_btn = None
+
+                # ESTRATÉGIA 1: Procurar por texto "arrow_forward" ou contém "Criar"
+                try:
+                    botoes_candidatos = self.driver.find_elements(By.XPATH,
+                        "//button[contains(., 'arrow_forward') or contains(., 'Criar')]")
+                    print(f"[LOG] Encontrou {len(botoes_candidatos)} botão(ões) candidato(s)")
+
+                    for idx, btn in enumerate(botoes_candidatos, 1):
+                        texto = btn.text.strip()
+                        disabled = btn.get_attribute('disabled')
+                        aria = btn.get_attribute('aria-label') or 'sem-aria'
+                        classes = btn.get_attribute('class')
+
+                        print(f"[LOG]   Candidato {idx}: texto='{texto}' | disabled={disabled} | aria='{aria}'")
+
+                        # Queremos o botão que contém "arrow_forward" e "Criar" E não está desabilitado
+                        if 'arrow_forward' in texto and 'Criar' in texto and not disabled:
+                            generate_btn = btn
+                            print(f"[LOG] ✅ ENCONTROU botão de geração! (#{idx})")
+                            break
+
+                except Exception as e:
+                    print(f"[LOG] Erro na estratégia 1: {e}")
+
+                # ESTRATÉGIA 2: JavaScript para encontrar botão com classe específica
+                if not generate_btn:
+                    print("[LOG] Tentando JavaScript...")
+                    try:
+                        js_find_button = """
+                        let botoes = Array.from(document.querySelectorAll('button'));
+                        let botao_gerar = botoes.find(btn => {
+                            let texto = btn.textContent || '';
+                            return texto.includes('arrow_forward') &&
+                                   texto.includes('Criar') &&
+                                   !btn.disabled &&
+                                   btn.offsetParent !== null;
+                        });
+                        return botao_gerar;
+                        """
+                        generate_btn = self.driver.execute_script(js_find_button)
+                        if generate_btn:
+                            print("[LOG] ✅ JavaScript encontrou botão!")
+                        else:
+                            print("[LOG] ❌ JavaScript não encontrou")
+                    except Exception as e:
+                        print(f"[LOG] Erro no JavaScript: {e}")
+
+                # Clicar no botão se encontrou
+                if not generate_btn:
+                    raise Exception("❌ Não encontrou botão de geração após todas tentativas")
+
+                # Tentar clicar
+                try:
+                    print("[LOG] Clicando no botão de gerar...")
+                    generate_btn.click()
+                    print("[LOG] ✅ Clicou na seta! Geração iniciada!")
+                    time.sleep(3)
+                except Exception as e:
+                    print(f"[LOG] .click() falhou: {e}. Tentando JavaScript...")
+                    self.driver.execute_script("arguments[0].click();", generate_btn)
+                    print("[LOG] ✅ Clicou com JavaScript!")
+                    time.sleep(3)
+
+            except Exception as e:
+                print(f"[ERRO] Erro ao clicar na seta de geração: {e}")
+                raise
+
+            print("[LOG] ✅ Configuração concluída! Vídeo em geração...")
+
+        except Exception as e:
+            print(f"[ERRO] Erro ao configurar e gerar: {e}")
+            # Salvar screenshot para debug
+            screenshot_path = os.path.join(self.output_folder, "debug_config_error.png")
+            self.driver.save_screenshot(screenshot_path)
+            print(f"[LOG] Screenshot salvo em: {screenshot_path}")
+            raise
+
     def google_login(self):
         """
         PASSO 2: Fazer login no Google
@@ -445,7 +906,12 @@ class VeoAutomator:
                 print(f"[LOG] Screenshot salvo em: {screenshot_path}")
                 raise
 
-            print(f"\n[LOG] ⏸️  AUTOMAÇÃO PAUSADA - Verifique a página e me diga o que apareceu!")
+            # 5. Configurar projeto e gerar primeira cena
+            print("\n[LOG] 🎯 PASSO 4: Configurando projeto e iniciando geração...")
+            self.configure_and_generate(scenes[0])
+
+            print(f"\n[LOG] ⏸️  AUTOMAÇÃO PAUSADA - Vídeo em geração!")
+            print(f"[LOG] Aguardando geração dos 2 vídeos...")
 
             # NÃO FECHA O NAVEGADOR - deixa aberto para você ver
             input("[LOG] Pressione ENTER no CMD para fechar o navegador...")
