@@ -311,6 +311,41 @@ class VeoAutomator:
         except Exception as e:
             print(f"[ERRO] Erro ao baixar vídeos: {e}")
 
+    def digitar_como_humano(self, element, texto, velocidade='normal'):
+        """
+        Digita texto caractere por caractere com delays aleatórios
+        para simular digitação humana
+
+        Args:
+            element: Elemento onde vai digitar
+            texto: Texto a ser digitado
+            velocidade: 'rapida', 'normal' ou 'lenta'
+        """
+        import random
+
+        # Definir delays baseado na velocidade
+        if velocidade == 'rapida':
+            delay_min, delay_max = 0.05, 0.10  # 50-100ms
+        elif velocidade == 'lenta':
+            delay_min, delay_max = 0.15, 0.30  # 150-300ms
+        else:  # normal
+            delay_min, delay_max = 0.08, 0.15  # 80-150ms
+
+        print(f"[LOG] Digitando {len(texto)} caracteres como humano (velocidade: {velocidade})...")
+
+        for i, char in enumerate(texto, 1):
+            element.send_keys(char)
+
+            # Delay aleatório entre cada caractere
+            delay = random.uniform(delay_min, delay_max)
+            time.sleep(delay)
+
+            # A cada 20 caracteres, pausa um pouco mais (como humano pensando)
+            if i % 20 == 0:
+                time.sleep(random.uniform(0.3, 0.6))
+
+        print("[LOG] ✅ Digitação concluída!")
+
     def configure_and_generate(self, prompt):
         """
         Configura o projeto e inicia geração do vídeo
@@ -622,8 +657,8 @@ class VeoAutomator:
             else:
                 print("[LOG] Sem imagem. Mantendo 'Texto para vídeo'")
 
-            # PASSO 4: Clicar no campo de texto e colar o prompt
-            print(f"[LOG] Colando prompt: {prompt[:80]}...")
+            # PASSO 4: Clicar no campo de texto e COLAR o prompt (primeira vez sempre cola)
+            print(f"[LOG] Preparando prompt: {prompt[:80]}...")
             try:
                 print("[LOG] Procurando campo de texto...")
                 prompt_field = self.wait.until(
@@ -632,137 +667,170 @@ class VeoAutomator:
                 prompt_field.click()
                 time.sleep(1)
                 prompt_field.clear()
+
+                # PRIMEIRA VEZ: sempre cola (mais rápido)
+                print("[LOG] Colando prompt...")
                 prompt_field.send_keys(prompt)
                 print("[LOG] ✅ Prompt colado!")
                 time.sleep(2)
 
             except Exception as e:
-                print(f"[ERRO] Erro ao colar prompt: {e}")
+                print(f"[ERRO] Erro ao preparar prompt: {e}")
                 raise
 
-            # PASSO 5: Clicar na seta branca para gerar
+            # PASSO 5: Clicar na seta branca para gerar (COM RETRY EM CASO DE ERRO)
             print("[LOG] Procurando seta branca para iniciar geração...")
-            try:
-                # Aguardar um pouco antes de procurar a seta (garantir que prompt foi colado)
-                print("[LOG] Aguardando 3 segundos para garantir que o prompt foi processado...")
-                time.sleep(3)
 
-                # ===== DEBUG: INVESTIGAR BOTÕES APÓS COLAR PROMPT =====
-                print("[LOG] 🔍 Investigando botões após colar o prompt...")
-                js_botoes_geracao = """
-                let botoes = Array.from(document.querySelectorAll('button'));
-                let resultados = [];
+            max_tentativas = 3
+            tentativa_atual = 0
+            geracao_sucesso = False
 
-                botoes.forEach((btn, idx) => {
-                    if (btn.offsetParent !== null) {  // Apenas visíveis
-                        let computedStyle = window.getComputedStyle(btn);
-                        resultados.push({
-                            indice: idx,
-                            classes: btn.className || 'sem-classe',
-                            ariaLabel: btn.getAttribute('aria-label') || 'sem-aria-label',
-                            texto: btn.textContent.trim() || 'sem-texto',
-                            type: btn.type || 'sem-type',
-                            disabled: btn.disabled,
-                            backgroundColor: computedStyle.backgroundColor,
-                            color: computedStyle.color,
-                            temIcone: btn.querySelector('svg') !== null,
-                            temArrow: btn.textContent.includes('arrow')
-                        });
-                    }
-                });
+            while tentativa_atual < max_tentativas and not geracao_sucesso:
+                tentativa_atual += 1
+                print(f"\n[LOG] ========== TENTATIVA {tentativa_atual}/{max_tentativas} ==========")
 
-                return resultados;
-                """
-
-                botoes_atuais = self.driver.execute_script(js_botoes_geracao)
-                print(f"[LOG] 🔍 Encontrados {len(botoes_atuais)} botões visíveis agora:")
-                print("[LOG] " + "="*80)
-
-                for btn_info in botoes_atuais[:25]:  # Mostrar primeiros 25
-                    print(f"[LOG] Botão #{btn_info['indice']}:")
-                    print(f"[LOG]   Classes: {btn_info['classes'][:80]}...")
-                    print(f"[LOG]   Aria-Label: {btn_info['ariaLabel']}")
-                    print(f"[LOG]   Texto: {btn_info['texto'][:50]}")
-                    print(f"[LOG]   Type: {btn_info['type']}")
-                    print(f"[LOG]   Disabled: {btn_info['disabled']}")
-                    print(f"[LOG]   Background: {btn_info['backgroundColor']}")
-                    print(f"[LOG]   Color: {btn_info['color']}")
-                    print(f"[LOG]   Tem SVG: {btn_info['temIcone']}")
-                    print(f"[LOG]   Tem 'arrow': {btn_info['temArrow']}")
-                    print("[LOG]   " + "-"*78)
-                print("[LOG] " + "="*80)
-
-                # Procurar botão de gerar
-                print("[LOG] Procurando botão com 'arrow_forward' ou 'Criar'...")
-                generate_btn = None
-
-                # ESTRATÉGIA 1: Procurar por texto "arrow_forward" ou contém "Criar"
                 try:
-                    botoes_candidatos = self.driver.find_elements(By.XPATH,
-                        "//button[contains(., 'arrow_forward') or contains(., 'Criar')]")
-                    print(f"[LOG] Encontrou {len(botoes_candidatos)} botão(ões) candidato(s)")
+                    # Aguardar um pouco antes de procurar a seta (garantir que prompt foi colado)
+                    print("[LOG] Aguardando 3 segundos para garantir que o prompt foi processado...")
+                    time.sleep(3)
 
-                    for idx, btn in enumerate(botoes_candidatos, 1):
-                        texto = btn.text.strip()
-                        disabled = btn.get_attribute('disabled')
-                        aria = btn.get_attribute('aria-label') or 'sem-aria'
-                        classes = btn.get_attribute('class')
+                    # Procurar botão de gerar
+                    print("[LOG] Procurando botão com 'arrow_forward' ou 'Criar'...")
+                    generate_btn = None
 
-                        print(f"[LOG]   Candidato {idx}: texto='{texto}' | disabled={disabled} | aria='{aria}'")
+                    # ESTRATÉGIA 1: Procurar por texto "arrow_forward" ou contém "Criar"
+                    try:
+                        botoes_candidatos = self.driver.find_elements(By.XPATH,
+                            "//button[contains(., 'arrow_forward') or contains(., 'Criar')]")
+                        print(f"[LOG] Encontrou {len(botoes_candidatos)} botão(ões) candidato(s)")
 
-                        # Queremos o botão que contém "arrow_forward" e "Criar" E não está desabilitado
-                        if 'arrow_forward' in texto and 'Criar' in texto and not disabled:
-                            generate_btn = btn
-                            print(f"[LOG] ✅ ENCONTROU botão de geração! (#{idx})")
+                        for idx, btn in enumerate(botoes_candidatos, 1):
+                            texto = btn.text.strip()
+                            disabled = btn.get_attribute('disabled')
+                            aria = btn.get_attribute('aria-label') or 'sem-aria'
+
+                            print(f"[LOG]   Candidato {idx}: texto='{texto}' | disabled={disabled} | aria='{aria}'")
+
+                            # Queremos o botão que contém "arrow_forward" e "Criar" E não está desabilitado
+                            if 'arrow_forward' in texto and 'Criar' in texto and not disabled:
+                                generate_btn = btn
+                                print(f"[LOG] ✅ ENCONTROU botão de geração! (#{idx})")
+                                break
+
+                    except Exception as e:
+                        print(f"[LOG] Erro na estratégia 1: {e}")
+
+                    # ESTRATÉGIA 2: JavaScript para encontrar botão
+                    if not generate_btn:
+                        print("[LOG] Tentando JavaScript...")
+                        try:
+                            js_find_button = """
+                            let botoes = Array.from(document.querySelectorAll('button'));
+                            let botao_gerar = botoes.find(btn => {
+                                let texto = btn.textContent || '';
+                                return texto.includes('arrow_forward') &&
+                                       texto.includes('Criar') &&
+                                       !btn.disabled &&
+                                       btn.offsetParent !== null;
+                            });
+                            return botao_gerar;
+                            """
+                            generate_btn = self.driver.execute_script(js_find_button)
+                            if generate_btn:
+                                print("[LOG] ✅ JavaScript encontrou botão!")
+                            else:
+                                print("[LOG] ❌ JavaScript não encontrou")
+                        except Exception as e:
+                            print(f"[LOG] Erro no JavaScript: {e}")
+
+                    # Clicar no botão se encontrou
+                    if not generate_btn:
+                        raise Exception("❌ Não encontrou botão de geração após todas tentativas")
+
+                    # Tentar clicar
+                    try:
+                        print("[LOG] Clicando no botão de gerar...")
+                        generate_btn.click()
+                        print("[LOG] ✅ Clicou na seta! Aguardando resposta do servidor...")
+                    except Exception as e:
+                        print(f"[LOG] .click() falhou: {e}. Tentando JavaScript...")
+                        self.driver.execute_script("arguments[0].click();", generate_btn)
+                        print("[LOG] ✅ Clicou com JavaScript! Aguardando resposta do servidor...")
+
+                    # AGUARDAR 20 SEGUNDOS para servidor processar
+                    print("[LOG] ⏳ Aguardando 20 segundos para verificar se houve erro...")
+                    time.sleep(20)
+
+                    # VERIFICAR SE DEU ERRO "Falha na geração"
+                    print("[LOG] 🔍 Verificando se houve 'Falha na geração'...")
+                    try:
+                        erro_element = self.driver.find_element(By.XPATH,
+                            "//div[contains(text(), 'Falha na geração')]")
+
+                        if erro_element and erro_element.is_displayed():
+                            print("[LOG] ❌ ERRO DETECTADO: 'Falha na geração'")
+
+                            # Se não é a última tentativa, tentar de novo DIGITANDO (não colando)
+                            if tentativa_atual < max_tentativas:
+                                print(f"[LOG] 🔄 Tentando novamente... ({tentativa_atual}/{max_tentativas})")
+
+                                # AGORA VAMOS DIGITAR EM VEZ DE COLAR (parece mais humano)
+                                print(f"[LOG] 🤖 Tentativa {tentativa_atual + 1}: Digitando como humano...")
+                                try:
+                                    # Encontrar campo de texto novamente
+                                    prompt_field_retry = self.wait.until(
+                                        EC.element_to_be_clickable((By.XPATH, "//textarea[contains(@placeholder, 'Crie um vídeo') or contains(@placeholder, 'vídeo')]"))
+                                    )
+                                    prompt_field_retry.click()
+                                    time.sleep(1)
+                                    prompt_field_retry.clear()
+                                    time.sleep(0.5)
+
+                                    # Digitar caractere por caractere
+                                    if tentativa_atual == 1:
+                                        # Segunda tentativa: digitação normal
+                                        self.digitar_como_humano(prompt_field_retry, prompt, velocidade='normal')
+                                    else:
+                                        # Terceira tentativa: digitação mais lenta (mais humana ainda)
+                                        self.digitar_como_humano(prompt_field_retry, prompt, velocidade='lenta')
+
+                                    time.sleep(2)
+                                    print("[LOG] ✅ Prompt digitado como humano!")
+
+                                except Exception as e:
+                                    print(f"[LOG] ⚠️ Erro ao digitar: {e}. Tentando colar mesmo...")
+                                    prompt_field_retry.send_keys(prompt)
+
+                                # Loop vai tentar clicar na seta novamente
+                                continue
+                            else:
+                                raise Exception(f"❌ Falhou após {max_tentativas} tentativas")
+                        else:
+                            # Elemento existe mas não está visível = sem erro
+                            print("[LOG] ✅ Nenhum erro detectado! Geração iniciada com sucesso!")
+                            geracao_sucesso = True
                             break
 
-                except Exception as e:
-                    print(f"[LOG] Erro na estratégia 1: {e}")
-
-                # ESTRATÉGIA 2: JavaScript para encontrar botão com classe específica
-                if not generate_btn:
-                    print("[LOG] Tentando JavaScript...")
-                    try:
-                        js_find_button = """
-                        let botoes = Array.from(document.querySelectorAll('button'));
-                        let botao_gerar = botoes.find(btn => {
-                            let texto = btn.textContent || '';
-                            return texto.includes('arrow_forward') &&
-                                   texto.includes('Criar') &&
-                                   !btn.disabled &&
-                                   btn.offsetParent !== null;
-                        });
-                        return botao_gerar;
-                        """
-                        generate_btn = self.driver.execute_script(js_find_button)
-                        if generate_btn:
-                            print("[LOG] ✅ JavaScript encontrou botão!")
-                        else:
-                            print("[LOG] ❌ JavaScript não encontrou")
                     except Exception as e:
-                        print(f"[LOG] Erro no JavaScript: {e}")
+                        # Se não encontrou elemento de erro = sucesso!
+                        if "no such element" in str(e).lower() or "unable to locate" in str(e).lower():
+                            print("[LOG] ✅ Nenhum erro detectado! Geração iniciada com sucesso!")
+                            geracao_sucesso = True
+                            break
+                        else:
+                            # Outro tipo de erro
+                            raise e
 
-                # Clicar no botão se encontrou
-                if not generate_btn:
-                    raise Exception("❌ Não encontrou botão de geração após todas tentativas")
-
-                # Tentar clicar
-                try:
-                    print("[LOG] Clicando no botão de gerar...")
-                    generate_btn.click()
-                    print("[LOG] ✅ Clicou na seta! Geração iniciada!")
-                    time.sleep(3)
                 except Exception as e:
-                    print(f"[LOG] .click() falhou: {e}. Tentando JavaScript...")
-                    self.driver.execute_script("arguments[0].click();", generate_btn)
-                    print("[LOG] ✅ Clicou com JavaScript!")
-                    time.sleep(3)
+                    print(f"[ERRO] Erro na tentativa {tentativa_atual}: {e}")
+                    if tentativa_atual >= max_tentativas:
+                        print(f"[ERRO] ❌ Falhou após {max_tentativas} tentativas")
+                        raise
 
-            except Exception as e:
-                print(f"[ERRO] Erro ao clicar na seta de geração: {e}")
-                raise
-
-            print("[LOG] ✅ Configuração concluída! Vídeo em geração...")
+            if geracao_sucesso:
+                print("[LOG] ✅ Configuração concluída! Vídeo em geração...")
+            else:
+                raise Exception("Não conseguiu iniciar geração do vídeo")
 
         except Exception as e:
             print(f"[ERRO] Erro ao configurar e gerar: {e}")
