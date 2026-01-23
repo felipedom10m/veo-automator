@@ -7,6 +7,7 @@ Lógica de automação com Selenium para controlar o Chrome e gerar vídeos no V
 
 import os
 import time
+import json
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -56,13 +57,36 @@ class VeoAutomator:
         except Exception as e:
             print(f"[LOG] Aviso: {e}")
 
-        # PASSO 2: Criar perfil temporário limpo
-        temp_profile = os.path.join(tempfile.gettempdir(), "chrome_veo_automation")
-        print(f"[LOG] Usando perfil limpo em: {temp_profile}")
+        # PASSO 2: Buscar perfil FLOW_{email} lendo arquivo Preferences
+        target_profile_name = f"FLOW_{self.email}"
+        chrome_user_data = os.path.expanduser(r"~\AppData\Local\Google\Chrome\User Data")
+
+        print(f"[LOG] Procurando perfil com nome: {target_profile_name}")
+
+        # Buscar em todos os Profile X qual tem esse nome
+        profile_directory = None
+        for item in os.listdir(chrome_user_data):
+            if item.startswith("Profile") or item == "Default":
+                prefs_file = os.path.join(chrome_user_data, item, "Preferences")
+                if os.path.exists(prefs_file):
+                    try:
+                        with open(prefs_file, 'r', encoding='utf-8') as f:
+                            prefs = json.load(f)
+                            profile_name = prefs.get('profile', {}).get('name', '')
+                            if profile_name == target_profile_name:
+                                profile_directory = item
+                                print(f"[LOG] ✅ Encontrado! Perfil '{target_profile_name}' está em pasta '{item}'")
+                                break
+                    except:
+                        continue
+
+        if not profile_directory:
+            raise Exception(f"❌ Perfil '{target_profile_name}' não encontrado! Crie o perfil manualmente no Chrome primeiro.")
 
         # PASSO 3: Configurar ChromeOptions
         chrome_options = Options()
-        chrome_options.add_argument(f"--user-data-dir={temp_profile}")
+        chrome_options.add_argument(f"--user-data-dir={chrome_user_data}")
+        chrome_options.add_argument(f"--profile-directory={profile_directory}")
         chrome_options.add_argument("--start-maximized")
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
@@ -84,13 +108,17 @@ class VeoAutomator:
             print("[LOG] Iniciando Chrome...")
             import chromedriver_autoinstaller
             chromedriver_autoinstaller.install()
+            print("[LOG] ChromeDriver instalado. Conectando ao Chrome...")
 
             self.driver = webdriver.Chrome(options=chrome_options)
+            print("[LOG] Driver criado!")
             self.wait = WebDriverWait(self.driver, 60)
             print("[LOG] ✅ Chrome aberto!")
 
         except Exception as e:
             print(f"[ERRO] Falha ao abrir Chrome: {e}")
+            import traceback
+            traceback.print_exc()
             raise
 
     def navigate_to_flow(self):
